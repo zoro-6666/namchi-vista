@@ -213,7 +213,8 @@ html[data-theme="dark"] .unit-card .unit-estimate { color: var(--amber); }
 .lightbox-controls button { color: #fff; }
 .lightbox-controls button:hover { border-color: rgba(255,255,255,.3); background: rgba(255,255,255,.12); }
 .lightbox-controls .lightbox-zoom-level { color: rgba(255,255,255,.8); }
-.lightbox-caption { margin: 12px 0 0; color: rgba(255,255,255,.75); font-family: var(--serif); font-size: 20px; text-align: center; }
+.lightbox-hint { margin: 8px 0 0; color: rgba(255,255,255,.62); font-size: 10px; text-align: center; }
+.lightbox-caption { margin: 4px 0 0; color: rgba(255,255,255,.75); font-family: var(--serif); font-size: 20px; text-align: center; }
 .lightbox-close { position: absolute; top: 7px; right: 13px; border: 0; background: transparent; color: #fff; cursor: pointer; font-size: 32px; }
 .noscript-note { padding: 12px 24px; background: var(--amber); color: var(--forest); text-align: center; }
 

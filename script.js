@@ -42,6 +42,8 @@
   let lightboxPanY = 0;
   let pointerDrag = null;
   let lightboxDrag = null;
+  const modelPointers = new Map();
+  const lightboxPointers = new Map();
   let suppressPlanClick = false;
 
   const menuToggle = document.querySelector(".menu-toggle");
@@ -119,6 +121,18 @@
     };
   }
 
+  function getPinchGeometry(pointers) {
+    const points = Array.from(pointers.values());
+    if (points.length < 2) return null;
+    const first = points[0];
+    const second = points[1];
+    return {
+      distance: Math.hypot(second.x - first.x, second.y - first.y),
+      centerX: (first.x + second.x) / 2,
+      centerY: (first.y + second.y) / 2
+    };
+  }
+
   function setModelZoom(zoom) {
     modelZoom = Math.max(1, Math.min(4, zoom));
     if (modelZoom === 1) {
@@ -184,8 +198,8 @@
     floorContent.classList.toggle("is-3d", activeView === "3d");
     document.querySelector(".model-controls").hidden = activeView !== "3d";
     planButton.setAttribute("aria-label", activeView === "3d"
-      ? "Drag to rotate Floor " + activeFloor + " 3D view. Zoom in and drag to move, or activate to open full view"
-      : "Enlarge Floor " + activeFloor + " 2D plan");
+      ? "Pinch to zoom or drag to rotate Floor " + activeFloor + " 3D view. Zoom in and drag to move, or activate to open full view"
+      : "Open Floor " + activeFloor + " 2D plan full view to pinch to zoom and drag to pan");
     planButton.dataset.caption = "Floor " + activeFloor + " · " + (activeView === "2d" ? "2D floor plan" : "3D floor view") + " · Project brochure";
     applyModelTransform();
 
@@ -238,24 +252,70 @@
     });
   });
 
-  planButton.addEventListener("pointerdown", function (event) {
-    if (activeView !== "3d" || !event.isPrimary) return;
+  function beginModelDrag(pointerId, moved) {
+    const point = modelPointers.get(pointerId);
+    if (!point) return;
     pointerDrag = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
+      pointerId: pointerId,
+      startX: point.x,
+      startY: point.y,
       panX: modelPanX,
       panY: modelPanY,
       rotationX: rotationX,
       rotationY: rotationY,
       mode: modelZoom > 1 ? "pan" : "rotate",
-      moved: false
+      moved: Boolean(moved)
     };
+  }
+
+  function updateModelPinch() {
+    const current = getPinchGeometry(modelPointers);
+    if (!current || !pointerDrag) return;
+    const zoom = Math.max(1, Math.min(4, pointerDrag.zoom * current.distance / pointerDrag.distance));
+    const scale = zoom / pointerDrag.zoom;
+    const bounds = planButton.getBoundingClientRect();
+    const pan = clampPan(
+      planArt.querySelector(".is-rotatable"),
+      zoom,
+      pointerDrag.panX + current.centerX - pointerDrag.centerX + (pointerDrag.centerX - (bounds.left + bounds.width / 2)) * (1 - scale),
+      pointerDrag.panY + current.centerY - pointerDrag.centerY + (pointerDrag.centerY - (bounds.top + bounds.height / 2)) * (1 - scale)
+    );
+    modelZoom = zoom;
+    modelPanX = pan.x;
+    modelPanY = pan.y;
+    pointerDrag.moved = true;
+    applyModelTransform();
+  }
+
+  planButton.addEventListener("pointerdown", function (event) {
+    if (activeView !== "3d" || (event.pointerType !== "touch" && !event.isPrimary) || modelPointers.size >= 2) return;
+    modelPointers.set(event.pointerId, { x: event.clientX, y: event.clientY, pointerType: event.pointerType });
+    if (modelPointers.size === 1) {
+      beginModelDrag(event.pointerId, false);
+    } else {
+      const pinch = getPinchGeometry(modelPointers);
+      pointerDrag = {
+        mode: "pinch",
+        distance: Math.max(1, pinch.distance),
+        centerX: pinch.centerX,
+        centerY: pinch.centerY,
+        zoom: modelZoom,
+        panX: modelPanX,
+        panY: modelPanY,
+        moved: true
+      };
+    }
     planButton.classList.add("is-dragging");
-    planButton.setPointerCapture(event.pointerId);
+    if (event.pointerType !== "touch") planButton.setPointerCapture(event.pointerId);
   });
   planButton.addEventListener("pointermove", function (event) {
-    if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
+    if (!modelPointers.has(event.pointerId) || !pointerDrag) return;
+    modelPointers.set(event.pointerId, { x: event.clientX, y: event.clientY, pointerType: event.pointerType });
+    if (pointerDrag.mode === "pinch") {
+      updateModelPinch();
+      return;
+    }
+    if (pointerDrag.pointerId !== event.pointerId) return;
     const dx = event.clientX - pointerDrag.startX;
     const dy = event.clientY - pointerDrag.startY;
     if (Math.abs(dx) + Math.abs(dy) > 4) pointerDrag.moved = true;
@@ -270,11 +330,18 @@
     applyModelTransform();
   });
   function finishModelDrag(event) {
-    if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
-    suppressPlanClick = pointerDrag.moved;
+    if (!modelPointers.has(event.pointerId)) return;
+    const moved = pointerDrag && pointerDrag.moved;
+    modelPointers.delete(event.pointerId);
+    if (event.pointerType !== "touch" && planButton.hasPointerCapture(event.pointerId)) planButton.releasePointerCapture(event.pointerId);
+    if (modelPointers.size === 1 && pointerDrag && pointerDrag.mode === "pinch") {
+      beginModelDrag(modelPointers.keys().next().value, true);
+      return;
+    }
+    if (modelPointers.size > 0) return;
     pointerDrag = null;
     planButton.classList.remove("is-dragging");
-    if (planButton.hasPointerCapture(event.pointerId)) planButton.releasePointerCapture(event.pointerId);
+    suppressPlanClick = Boolean(moved);
     if (suppressPlanClick) window.setTimeout(function () { suppressPlanClick = false; }, 500);
   }
   planButton.addEventListener("pointerup", finishModelDrag);
@@ -328,33 +395,92 @@
       }
     });
   });
-  lightboxImage.addEventListener("pointerdown", function (event) {
-    if (lightboxZoom <= 1 || !event.isPrimary) return;
+  function beginLightboxDrag(pointerId, moved) {
+    const point = lightboxPointers.get(pointerId);
+    if (!point) return;
     lightboxDrag = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
+      pointerId: pointerId,
+      startX: point.x,
+      startY: point.y,
       panX: lightboxPanX,
-      panY: lightboxPanY
+      panY: lightboxPanY,
+      mode: lightboxZoom > 1 ? "pan" : "idle",
+      moved: Boolean(moved)
     };
+  }
+
+  function updateLightboxPinch() {
+    const current = getPinchGeometry(lightboxPointers);
+    if (!current || !lightboxDrag) return;
+    const zoom = Math.max(1, Math.min(4, lightboxDrag.zoom * current.distance / lightboxDrag.distance));
+    const scale = zoom / lightboxDrag.zoom;
+    const bounds = lightboxViewer.getBoundingClientRect();
+    const pan = clampLightboxPan(
+      zoom,
+      lightboxDrag.panX + current.centerX - lightboxDrag.centerX + (lightboxDrag.centerX - (bounds.left + bounds.width / 2)) * (1 - scale),
+      lightboxDrag.panY + current.centerY - lightboxDrag.centerY + (lightboxDrag.centerY - (bounds.top + bounds.height / 2)) * (1 - scale)
+    );
+    lightboxZoom = zoom;
+    lightboxPanX = pan.x;
+    lightboxPanY = pan.y;
+    lightboxDrag.moved = true;
+    applyLightboxTransform();
+  }
+
+  lightboxViewer.addEventListener("pointerdown", function (event) {
+    if ((event.pointerType !== "touch" && (!event.isPrimary || lightboxZoom <= 1)) || lightboxPointers.size >= 2) return;
+    lightboxPointers.set(event.pointerId, { x: event.clientX, y: event.clientY, pointerType: event.pointerType });
+    if (lightboxPointers.size === 1) {
+      beginLightboxDrag(event.pointerId, false);
+    } else {
+      const pinch = getPinchGeometry(lightboxPointers);
+      lightboxDrag = {
+        mode: "pinch",
+        distance: Math.max(1, pinch.distance),
+        centerX: pinch.centerX,
+        centerY: pinch.centerY,
+        zoom: lightboxZoom,
+        panX: lightboxPanX,
+        panY: lightboxPanY,
+        moved: true
+      };
+    }
     lightboxImage.classList.add("is-dragging");
-    lightboxImage.setPointerCapture(event.pointerId);
+    if (event.pointerType !== "touch") lightboxViewer.setPointerCapture(event.pointerId);
   });
-  lightboxImage.addEventListener("pointermove", function (event) {
-    if (!lightboxDrag || lightboxDrag.pointerId !== event.pointerId) return;
+  lightboxViewer.addEventListener("pointermove", function (event) {
+    if (!lightboxPointers.has(event.pointerId) || !lightboxDrag) return;
+    lightboxPointers.set(event.pointerId, { x: event.clientX, y: event.clientY, pointerType: event.pointerType });
+    if (lightboxDrag.mode === "pinch") {
+      updateLightboxPinch();
+      return;
+    }
+    if (lightboxDrag.pointerId !== event.pointerId || lightboxDrag.mode !== "pan") return;
     const pan = clampLightboxPan(lightboxZoom, lightboxDrag.panX + event.clientX - lightboxDrag.startX, lightboxDrag.panY + event.clientY - lightboxDrag.startY);
     lightboxPanX = pan.x;
     lightboxPanY = pan.y;
+    lightboxDrag.moved = true;
     applyLightboxTransform();
   });
   function finishLightboxDrag(event) {
-    if (!lightboxDrag || lightboxDrag.pointerId !== event.pointerId) return;
+    if (!lightboxPointers.has(event.pointerId)) return;
+    lightboxPointers.delete(event.pointerId);
+    if (event.pointerType !== "touch" && lightboxViewer.hasPointerCapture(event.pointerId)) lightboxViewer.releasePointerCapture(event.pointerId);
+    if (lightboxPointers.size === 1 && lightboxDrag && lightboxDrag.mode === "pinch") {
+      beginLightboxDrag(lightboxPointers.keys().next().value, true);
+      return;
+    }
+    if (lightboxPointers.size > 0) return;
     lightboxDrag = null;
     lightboxImage.classList.remove("is-dragging");
-    if (lightboxImage.hasPointerCapture(event.pointerId)) lightboxImage.releasePointerCapture(event.pointerId);
   }
-  lightboxImage.addEventListener("pointerup", finishLightboxDrag);
-  lightboxImage.addEventListener("pointercancel", finishLightboxDrag);
+  lightboxViewer.addEventListener("pointerup", finishLightboxDrag);
+  lightboxViewer.addEventListener("pointercancel", finishLightboxDrag);
+  lightbox.addEventListener("close", function () {
+    lightboxPointers.clear();
+    lightboxDrag = null;
+    lightboxImage.classList.remove("is-dragging");
+  });
   lightboxViewer.addEventListener("wheel", function (event) {
     event.preventDefault();
     setLightboxZoom(lightboxZoom + (event.deltaY < 0 ? 0.2 : -0.2));
