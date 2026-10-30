@@ -36,6 +36,9 @@ NV website/
         ├── namchi-vista-sunset.jpg
         ├── namchi-vista-retreat.jpg
         ├── namchi-vista-residence.jpg
+        ├── namchi-vista-sunset-mobile.jpg
+        ├── namchi-vista-retreat-mobile.jpg
+        ├── namchi-vista-residence-mobile.jpg
         ├── namchi-floor-1-2d.jpg
         ├── namchi-floor-1-3d.png
         ├── namchi-floor-2-2d.jpg
