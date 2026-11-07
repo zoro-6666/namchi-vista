@@ -747,9 +747,11 @@ html[data-theme="dark"] .feature-list span:hover { color: var(--ink); }
 }
 .hero--showcase .hero-finance-note small {
   display: block;
-  margin-top: 3px;
-  color: rgba(24,56,43,.72);
-  font-size: 8px;
+  margin-top: 6px;
+  color: #355542;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 .hero--showcase .hero-actions {
   position: relative;
@@ -774,8 +776,9 @@ html[data-theme="dark"] .feature-list span:hover { color: var(--ink); }
 .hero--showcase .hero-actions .button span { font-size: 16px; }
 .hero--showcase .button-ghost { border-color: rgba(239, 207, 122, .65); }
 .hero--showcase .hero-scroll {
-  position: static;
-  margin-top: 14px;
+  position: relative;
+  bottom: auto;
+  margin-top: 18px;
   color: rgba(255,255,255,.7);
   font-size: 8px;
 }
@@ -865,7 +868,7 @@ html[data-theme="dark"] .feature-list span:hover { color: var(--ink); }
     letter-spacing: .075em;
   }
   .hero--showcase .hero-actions .button span { font-size: 15px; }
-  .hero--showcase .hero-scroll { margin-top: 12px; }
+  .hero--showcase .hero-scroll { margin-top: 18px; }
   .hero--showcase .hero-image {
     grid-column: 1;
     grid-row: 2;
